@@ -1,0 +1,16 @@
+{
+  "payloads": [
+    {
+      "message": "I want one chicken biriyani, Butter Chicken and two masala dosa",
+      "merchant_id": 1
+    },
+    {
+      "message": "What spicy chicken dishes do you recommend?",
+      "merchant_id": 1
+    },
+    {
+      "message": "What is the weather like today?",
+      "merchant_id": 1
+    }
+  ]
+}
