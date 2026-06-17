@@ -1,12 +1,18 @@
 import json
 import re
-from typing import List
+from typing import List, Optional
 
 from openai import OpenAI
 
 from app.core.config import settings
 from app.models.zomato_item import ZomatoItem
-from app.schemas.order import AIExtraction, AIOrderResult, AISuggestedItem
+from app.schemas.order import (
+    AIAmbiguousCandidate,
+    AIAmbiguousItem,
+    AIExtraction,
+    AIOrderResult,
+    AISuggestedItem,
+)
 
 client = OpenAI(api_key=settings.OPENAI_API_KEY)
 
@@ -164,17 +170,17 @@ You will receive:
 2. A customer's order message.
 
 Your task:
-- Identify every item and quantity the customer wants.
-- For each requested item, find the best match(es) from the available items using the name and description.
-- Each requested item must appear in EXACTLY ONE of matched_items, ambiguous_items, or unrecognized_items — never zero, never more than one.
-- If there is exactly one clear match, add it to matched_items.
-- If two or more items are plausible matches (e.g. "leather wallet" could be both "Brown Leather Wallet" and "Black Leather Wallet"), add it to ambiguous_items with ALL of those candidates (at least 2). Never add an item to ambiguous_items with fewer than 2 candidates.
-- If zero items are a plausible match for a requested item, add the phrase to unrecognized_items. Do not also add it to ambiguous_items.
+- Identify every distinct item phrase and quantity the customer wants.
+- Each distinct phrase from the customer's message must appear in EXACTLY ONE of matched_items, ambiguous_items, or unrecognized_items — never zero, never more than one.
+- A single customer phrase maps to a SINGLE catalog item. Never add the same phrase to matched_items more than once, even if multiple catalog items look similar.
+- If there is exactly one clear catalog match for the phrase, add it to matched_items.
+- If two or more catalog items are all plausible matches for the same phrase (i.e. the customer's intent is unclear), add ONE entry to ambiguous_items listing ALL of those candidates. Never add an item to ambiguous_items with fewer than 2 candidates.
+- If zero catalog items are a plausible match, add the phrase to unrecognized_items. Do not also add it to ambiguous_items.
 - When no quantity is explicitly stated, assume 1.
 - Always respond with valid JSON matching the provided schema. No extra text."""
 
 
-def parse_order(message: str, items: List[ZomatoItem]) -> AIOrderResult:
+def parse_order(message: str, items: List[ZomatoItem], extracted_phrases: Optional[List[str]] = None) -> AIOrderResult:
     item_context = _build_item_context(items)
     response = client.chat.completions.create(
         model=settings.OPENAI_MODEL,
@@ -202,11 +208,36 @@ def parse_order(message: str, items: List[ZomatoItem]) -> AIOrderResult:
     raw = response.choices[0].message.content
     result = AIOrderResult.model_validate(json.loads(raw))
 
-    # The model occasionally lists the same item in both ambiguous_items and
-    # unrecognized_items, sometimes with a quantity word in one but not the
-    # other (e.g. "masala dosa" vs "two masala dosa"). When it has already
-    # proposed candidates, treat that as authoritative and drop the redundant
-    # unrecognized_items entry.
+    # When the AI places multiple catalog items in matched_items for the same customer
+    # phrase (e.g. "two Shawaya" → "Shawaya Mazbi Regular" qty=2 AND "Shawaya Mazbi
+    # Masala" qty=2), detect it by checking whether an extracted phrase is a substring
+    # of 2+ matched item names. If so, demote those items to ambiguous_items.
+    if extracted_phrases and result.matched_items:
+        ids_to_demote: set = set()
+        for phrase in extracted_phrases:
+            phrase_lower = _normalize_phrase(phrase)
+            hits = [m for m in result.matched_items if phrase_lower in m.name.lower()]
+            if len(hits) >= 2:
+                ids_to_demote.update(m.id for m in hits)
+                result.ambiguous_items.append(
+                    AIAmbiguousItem(
+                        query=phrase,
+                        qty=hits[0].qty,
+                        candidates=[AIAmbiguousCandidate(id=m.id, name=m.name) for m in hits],
+                    )
+                )
+        if ids_to_demote:
+            result.matched_items = [m for m in result.matched_items if m.id not in ids_to_demote]
+
+    # If the model lists a candidate item in both ambiguous_items and matched_items,
+    # ambiguous_items is authoritative — remove the duplicate from matched_items.
+    ambiguous_candidate_ids = {c.id for a in result.ambiguous_items for c in a.candidates}
+    result.matched_items = [
+        m for m in result.matched_items if m.id not in ambiguous_candidate_ids
+    ]
+
+    # If the model lists the same query in both ambiguous_items and unrecognized_items
+    # (sometimes with a leading quantity word difference), ambiguous_items is authoritative.
     ambiguous_normalized = {_normalize_phrase(a.query) for a in result.ambiguous_items}
     result.unrecognized_items = [
         u for u in result.unrecognized_items if _normalize_phrase(u) not in ambiguous_normalized

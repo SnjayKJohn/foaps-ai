@@ -26,7 +26,7 @@ def create_order(payload: OrderRequest, db: Session = Depends(get_db)):
 
     # Step 2 — fuzzy-search the DB for candidates (pg_trgm)
     candidates = menu_service.search_by_names(db, payload.merchant_id, extraction.items)
-
+    
     if extraction.message_type == "suggestion":
         if not candidates:
             return OrderResponse(message_type="suggestion", suggestions=[])
@@ -43,7 +43,7 @@ def create_order(payload: OrderRequest, db: Session = Depends(get_db)):
         return OrderResponse(message_type="order", unrecognized_items=extraction.items)
     
     # Step 3 — AI matches the original message against the ~20-30 candidates
-    result = ai_service.parse_order(payload.message, candidates)
+    result = ai_service.parse_order(payload.message, candidates, extraction.items)
 
     order = None
     if result.matched_items:
