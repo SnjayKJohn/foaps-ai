@@ -1,0 +1,754 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Foaps AI Chat — Test</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        #f5f4f0;
+    --surface:   #ffffff;
+    --border:    #e4e2dc;
+    --accent:    #e8703a;
+    --accent-dk: #c95c28;
+    --text:      #1a1a1a;
+    --muted:     #7a7870;
+    --bubble-ai: #ffffff;
+    --bubble-u:  #e8703a;
+    --status-collecting: #f59e0b;
+    --status-confirming: #3b82f6;
+    --status-completed:  #22c55e;
+    --radius:    12px;
+    --shadow:    0 2px 12px rgba(0,0,0,.08);
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── header ── */
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 24px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  header .logo {
+    width: 32px; height: 32px;
+    background: var(--accent);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+  }
+  header h1 { font-size: 16px; font-weight: 600; }
+  header span { font-size: 12px; color: var(--muted); margin-left: 4px; }
+
+  /* ── main layout ── */
+  .layout {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+    gap: 0;
+  }
+
+  /* ── setup panel ── */
+  #setup-panel {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+  }
+  .setup-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 36px 40px;
+    width: 100%;
+    max-width: 420px;
+  }
+  .setup-card h2 { font-size: 20px; font-weight: 700; margin-bottom: 6px; }
+  .setup-card p  { color: var(--muted); font-size: 14px; margin-bottom: 28px; }
+  .field { margin-bottom: 18px; }
+  .field label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 6px;
+    color: var(--text);
+  }
+  .field .hint { font-weight: 400; color: var(--muted); margin-left: 4px; }
+  .field input {
+    width: 100%;
+    padding: 10px 14px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 14px;
+    outline: none;
+    transition: border-color .15s;
+    background: var(--surface);
+  }
+  .field input:focus { border-color: var(--accent); }
+  .btn-primary {
+    width: 100%;
+    padding: 12px;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background .15s;
+    margin-top: 4px;
+  }
+  .btn-primary:hover { background: var(--accent-dk); }
+  .btn-primary:disabled { opacity: .5; cursor: not-allowed; }
+
+  /* ── chat layout ── */
+  #chat-layout {
+    display: none;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* ── messages panel ── */
+  .chat-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid var(--border);
+    background: var(--bg);
+    min-width: 0;
+  }
+
+  .chat-header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .chat-header .meta { flex: 1; }
+  .chat-header .meta strong { font-size: 14px; font-weight: 600; display: block; }
+  .chat-header .meta small { font-size: 12px; color: var(--muted); }
+
+  .status-badge {
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .5px;
+  }
+  .status-badge.collecting { background: #fef3c7; color: #92400e; }
+  .status-badge.confirming { background: #dbeafe; color: #1e40af; }
+  .status-badge.completed  { background: #dcfce7; color: #166534; }
+
+  .messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .message {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    max-width: 78%;
+  }
+  .message.user   { align-self: flex-end; flex-direction: row-reverse; }
+  .message.system { align-self: flex-start; }
+
+  .avatar {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+  .message.system .avatar { background: var(--accent); color: #fff; }
+  .message.user   .avatar { background: #334155;       color: #fff; }
+
+  .bubble {
+    padding: 10px 14px;
+    border-radius: 14px;
+    font-size: 14px;
+    line-height: 1.55;
+    max-width: 100%;
+    word-break: break-word;
+    white-space: pre-wrap;
+  }
+  .message.system .bubble {
+    background: var(--bubble-ai);
+    border: 1px solid var(--border);
+    border-bottom-left-radius: 4px;
+    box-shadow: var(--shadow);
+  }
+  .message.user .bubble {
+    background: var(--bubble-u);
+    color: #fff;
+    border-bottom-right-radius: 4px;
+  }
+
+  .typing .bubble {
+    display: flex; align-items: center; gap: 4px; padding: 12px 16px;
+  }
+  .dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--muted);
+    animation: bounce .9s infinite;
+  }
+  .dot:nth-child(2) { animation-delay: .15s; }
+  .dot:nth-child(3) { animation-delay: .30s; }
+  @keyframes bounce {
+    0%, 60%, 100% { transform: translateY(0); }
+    30%           { transform: translateY(-6px); }
+  }
+
+  /* ── input bar ── */
+  .input-bar {
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    padding: 14px 16px;
+    display: flex;
+    gap: 10px;
+    align-items: flex-end;
+  }
+  .input-bar textarea {
+    flex: 1;
+    resize: none;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 14px;
+    font-size: 14px;
+    font-family: inherit;
+    line-height: 1.5;
+    outline: none;
+    transition: border-color .15s;
+    max-height: 120px;
+    overflow-y: auto;
+  }
+  .input-bar textarea:focus { border-color: var(--accent); }
+  .send-btn {
+    width: 40px; height: 40px;
+    border-radius: 10px;
+    background: var(--accent);
+    border: none;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    color: #fff;
+    flex-shrink: 0;
+    transition: background .15s;
+  }
+  .send-btn:hover { background: var(--accent-dk); }
+  .send-btn:disabled { opacity: .4; cursor: not-allowed; }
+
+  /* ── sidebar ── */
+  .sidebar {
+    width: 300px;
+    flex-shrink: 0;
+    background: var(--surface);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .sidebar-section {
+    border-bottom: 1px solid var(--border);
+    padding: 16px;
+  }
+  .sidebar-section h3 {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .6px;
+    color: var(--muted);
+    margin-bottom: 12px;
+  }
+
+  /* session info */
+  .info-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 13px;
+    margin-bottom: 8px;
+  }
+  .info-row .label { color: var(--muted); }
+  .info-row .value { font-weight: 500; font-size: 12px; word-break: break-all; text-align: right; max-width: 160px; }
+
+  /* cart */
+  .cart-list { display: flex; flex-direction: column; gap: 8px; }
+  .cart-empty { font-size: 13px; color: var(--muted); font-style: italic; }
+  .cart-item {
+    background: var(--bg);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 13px;
+  }
+  .cart-item-name { font-weight: 600; margin-bottom: 2px; }
+  .cart-item-meta { color: var(--muted); font-size: 12px; }
+  .cart-item-price {
+    margin-top: 4px;
+    font-size: 12px;
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .cart-item-extra {
+    margin-top: 4px;
+    font-size: 11px;
+    color: var(--muted);
+    border-left: 2px solid var(--border);
+    padding-left: 6px;
+    line-height: 1.6;
+  }
+
+  /* finalized order */
+  .order-box {
+    background: #f0fdf4;
+    border: 1px solid #86efac;
+    border-radius: 8px;
+    padding: 12px;
+    font-size: 13px;
+    overflow-y: auto;
+    max-height: 260px;
+  }
+  .order-box pre {
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: "SF Mono", "Fira Code", monospace;
+    font-size: 11px;
+    color: #166534;
+  }
+  .order-none { font-size: 13px; color: var(--muted); font-style: italic; }
+
+  /* reset btn */
+  .btn-reset {
+    width: 100%;
+    padding: 9px;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 13px;
+    color: var(--muted);
+    cursor: pointer;
+    margin-top: 4px;
+    transition: all .15s;
+  }
+  .btn-reset:hover { border-color: #ef4444; color: #ef4444; }
+
+  /* suggestion chips */
+  .suggestion-row {
+    align-self: flex-start;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-width: 78%;
+    padding-left: 36px;   /* align under the AI avatar */
+  }
+  .suggestion-chip {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 8px 12px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: border-color .15s, background .15s;
+    text-align: left;
+  }
+  .suggestion-chip:hover { border-color: var(--accent); background: #fff8f5; }
+  .suggestion-chip .chip-num {
+    font-weight: 700;
+    color: var(--accent);
+    flex-shrink: 0;
+    min-width: 18px;
+  }
+  .suggestion-chip .chip-body { flex: 1; }
+  .suggestion-chip .chip-name { font-weight: 600; color: var(--text); }
+  .suggestion-chip .chip-reason { color: var(--muted); font-size: 12px; margin-top: 1px; }
+
+  /* scrollbar */
+  ::-webkit-scrollbar { width: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">🍴</div>
+  <h1>Foaps AI Chat</h1>
+  <span>— test interface</span>
+</header>
+
+<div class="layout">
+
+  <!-- ── SETUP PANEL ── -->
+  <div id="setup-panel">
+    <div class="setup-card">
+      <h2>Start a chat session</h2>
+      <p>Enter your merchant details to begin an AI-assisted ordering conversation.</p>
+
+      <div class="field">
+        <label for="merchant-id">Merchant / Location ID <span class="hint">(required)</span></label>
+        <input id="merchant-id" type="number" placeholder="e.g. 42" min="1" />
+      </div>
+      <div class="field">
+        <label for="customer-phone">Customer phone <span class="hint">(optional — enables history)</span></label>
+        <input id="customer-phone" type="tel" placeholder="e.g. +919876543210" />
+      </div>
+      <div class="field">
+        <label for="api-base">API base URL <span class="hint">(default: localhost:8000)</span></label>
+        <input id="api-base" type="text" value="http://localhost:8000" />
+      </div>
+
+      <button class="btn-primary" id="start-btn" onclick="startSession()">Start ordering →</button>
+      <div id="setup-error" style="color:#ef4444;font-size:13px;margin-top:12px;"></div>
+    </div>
+  </div>
+
+  <!-- ── CHAT LAYOUT ── -->
+  <div id="chat-layout">
+
+    <!-- messages -->
+    <div class="chat-panel">
+      <div class="chat-header">
+        <div class="meta">
+          <strong id="header-title">Ordering chat</strong>
+          <small id="header-sub"></small>
+        </div>
+        <span class="status-badge collecting" id="status-badge">Collecting</span>
+      </div>
+
+      <div class="messages" id="messages"></div>
+
+      <div class="input-bar">
+        <textarea id="msg-input" rows="1" placeholder="Type your order…" onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+        <button class="send-btn" id="send-btn" onclick="sendMessage()" title="Send">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- sidebar -->
+    <div class="sidebar">
+
+      <div class="sidebar-section">
+        <h3>Session</h3>
+        <div class="info-row"><span class="label">Merchant ID</span><span class="value" id="si-merchant">—</span></div>
+        <div class="info-row"><span class="label">Phone</span><span class="value" id="si-phone">—</span></div>
+        <div class="info-row"><span class="label">Status</span><span class="value" id="si-status">—</span></div>
+        <div class="info-row"><span class="label">Token</span><span class="value" id="si-token" style="font-family:monospace;font-size:10px;">—</span></div>
+      </div>
+
+      <div class="sidebar-section" style="flex:1;overflow-y:auto;">
+        <h3>Cart</h3>
+        <div class="cart-list" id="cart-list">
+          <span class="cart-empty">Empty</span>
+        </div>
+      </div>
+
+      <div class="sidebar-section" style="overflow:auto;max-height:280px;">
+        <h3>Finalized order</h3>
+        <div id="order-container"><span class="order-none">Not yet confirmed.</span></div>
+      </div>
+
+      <div class="sidebar-section">
+        <button class="btn-reset" onclick="resetSession()">↩ New session</button>
+      </div>
+
+    </div>
+  </div><!-- /chat-layout -->
+
+</div><!-- /layout -->
+
+<script>
+  let sessionToken = null;
+  let apiBase = 'http://localhost:8000';
+  let busy = false;
+
+  // ── session start ────────────────────────────────────────────────────────
+  async function startSession() {
+    const merchantId = document.getElementById('merchant-id').value.trim();
+    const phone      = document.getElementById('customer-phone').value.trim();
+    const errEl      = document.getElementById('setup-error');
+    apiBase          = document.getElementById('api-base').value.replace(/\/$/, '');
+
+    if (!merchantId) { errEl.textContent = 'Merchant ID is required.'; return; }
+
+    const btn = document.getElementById('start-btn');
+    btn.disabled = true;
+    btn.textContent = 'Starting…';
+    errEl.textContent = '';
+
+    try {
+      const body = { merchant_id: Number(merchantId) };
+      if (phone) body.customer_phone = phone;
+
+      const res  = await fetch(`${apiBase}/api/v1/chat/start`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify(body),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || `HTTP ${res.status}`);
+      }
+
+      const data = await res.json();
+      sessionToken = data.session_token;
+
+      // update sidebar info
+      document.getElementById('si-merchant').textContent = merchantId;
+      document.getElementById('si-phone').textContent    = phone || 'n/a';
+      document.getElementById('si-token').textContent    = sessionToken;
+      document.getElementById('header-title').textContent = `Merchant #${merchantId}`;
+      document.getElementById('header-sub').textContent   = phone ? `📞 ${phone}` : 'Guest session';
+
+      // switch views
+      document.getElementById('setup-panel').style.display = 'none';
+      document.getElementById('chat-layout').style.display  = 'flex';
+
+      appendMessage('system', data.reply);
+      document.getElementById('msg-input').focus();
+
+    } catch (e) {
+      errEl.textContent = 'Error: ' + e.message;
+      btn.disabled = false;
+      btn.textContent = 'Start ordering →';
+    }
+  }
+
+  // ── send message ─────────────────────────────────────────────────────────
+  async function sendMessage() {
+    if (busy) return;
+    const input = document.getElementById('msg-input');
+    const text  = input.value.trim();
+    if (!text) return;
+
+    input.value = '';
+    autoResize(input);
+    appendMessage('user', text);
+
+    busy = true;
+    document.getElementById('send-btn').disabled = true;
+    const typingId = appendTyping();
+
+    try {
+      const res = await fetch(`${apiBase}/api/v1/chat/message`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ session_token: sessionToken, message: text }),
+      });
+
+      removeTyping(typingId);
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        appendMessage('system', '⚠️ ' + (err.detail || `Server error ${res.status}`));
+        return;
+      }
+
+      const data = await res.json();
+      appendMessage('system', data.reply);
+      if (data.suggestions && data.suggestions.length) appendSuggestions(data.suggestions);
+      updateStatus(data.status);
+      updateCart(data.cart || []);
+      if (data.finalized_order) updateOrder(data.finalized_order);
+
+    } catch (e) {
+      removeTyping(typingId);
+      appendMessage('system', '⚠️ Network error: ' + e.message);
+    } finally {
+      busy = false;
+      document.getElementById('send-btn').disabled = false;
+      if (document.getElementById('status-badge').classList.contains('completed')) {
+        document.getElementById('msg-input').disabled = true;
+        document.getElementById('send-btn').disabled  = true;
+      }
+    }
+  }
+
+  // ── UI helpers ───────────────────────────────────────────────────────────
+  function appendMessage(role, text) {
+    const container = document.getElementById('messages');
+    const wrap = document.createElement('div');
+    wrap.className = `message ${role}`;
+
+    const avatar = document.createElement('div');
+    avatar.className = 'avatar';
+    avatar.textContent = role === 'system' ? '🤖' : '👤';
+
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble';
+    bubble.textContent = text;
+
+    wrap.appendChild(avatar);
+    wrap.appendChild(bubble);
+    container.appendChild(wrap);
+    container.scrollTop = container.scrollHeight;
+    return wrap;
+  }
+
+  let typingCounter = 0;
+  function appendTyping() {
+    const id = ++typingCounter;
+    const container = document.getElementById('messages');
+    const wrap = document.createElement('div');
+    wrap.className = 'message system typing';
+    wrap.dataset.typingId = id;
+
+    const avatar = document.createElement('div');
+    avatar.className = 'avatar';
+    avatar.textContent = '🤖';
+
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble';
+    bubble.innerHTML = '<div class="dot"></div><div class="dot"></div><div class="dot"></div>';
+
+    wrap.appendChild(avatar);
+    wrap.appendChild(bubble);
+    container.appendChild(wrap);
+    container.scrollTop = container.scrollHeight;
+    return id;
+  }
+
+  function removeTyping(id) {
+    const el = document.querySelector(`[data-typing-id="${id}"]`);
+    if (el) el.remove();
+  }
+
+  function updateStatus(status) {
+    const badge = document.getElementById('status-badge');
+    badge.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+    badge.className = `status-badge ${status}`;
+    document.getElementById('si-status').textContent = status;
+  }
+
+  function updateCart(cart) {
+    const list = document.getElementById('cart-list');
+    list.innerHTML = '';
+
+    if (!cart.length) {
+      list.innerHTML = '<span class="cart-empty">Empty</span>';
+      return;
+    }
+
+    cart.forEach(item => {
+      const div = document.createElement('div');
+      div.className = 'cart-item';
+
+      const price = (item.unit_price || 0).toFixed(2);
+      const total = ((item.unit_price || 0) * (item.qty || 1)).toFixed(2);
+
+      let extras = '';
+      if (item.variant_name) extras += `Variant: ${item.variant_name}\n`;
+      if (item.chosen_groups && item.chosen_groups.length) {
+        item.chosen_groups.forEach(g => {
+          extras += `${g.group_name}: ${g.choice_name}${g.price ? ` (+₹${g.price})` : ''}\n`;
+        });
+      }
+
+      div.innerHTML = `
+        <div class="cart-item-name">${escHtml(item.name)}</div>
+        <div class="cart-item-meta">Qty: ${item.qty}</div>
+        <div class="cart-item-price">₹${price} × ${item.qty} = ₹${total}</div>
+        ${extras ? `<div class="cart-item-extra">${escHtml(extras.trim())}</div>` : ''}
+      `;
+      list.appendChild(div);
+    });
+  }
+
+  function updateOrder(order) {
+    const container = document.getElementById('order-container');
+    const box = document.createElement('div');
+    box.className = 'order-box';
+    const pre = document.createElement('pre');
+    pre.textContent = JSON.stringify(order, null, 2);
+    box.appendChild(pre);
+    container.innerHTML = '';
+    container.appendChild(box);
+  }
+
+  function escHtml(str) {
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/\n/g, '<br>');
+  }
+
+  function appendSuggestions(suggestions) {
+    const container = document.getElementById('messages');
+    const row = document.createElement('div');
+    row.className = 'suggestion-row';
+
+    suggestions.forEach((s, i) => {
+      const chip = document.createElement('button');
+      chip.className = 'suggestion-chip';
+      chip.innerHTML = `
+        <span class="chip-num">${i + 1}.</span>
+        <span class="chip-body">
+          <div class="chip-name">${escHtml(s.name)}</div>
+          <div class="chip-reason">${escHtml(s.reason)}</div>
+        </span>`;
+      chip.onclick = () => {
+        document.getElementById('msg-input').value = `I'll have ${s.name}`;
+        document.getElementById('msg-input').focus();
+      };
+      row.appendChild(chip);
+    });
+
+    container.appendChild(row);
+    container.scrollTop = container.scrollHeight;
+  }
+
+  function autoResize(el) {
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+  }
+
+  function handleKey(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  }
+
+  function resetSession() {
+    sessionToken = null;
+    busy = false;
+    document.getElementById('messages').innerHTML = '';
+    document.getElementById('cart-list').innerHTML = '<span class="cart-empty">Empty</span>';
+    document.getElementById('order-container').innerHTML = '<span class="order-none">Not yet confirmed.</span>';
+    document.getElementById('status-badge').className = 'status-badge collecting';
+    document.getElementById('status-badge').textContent = 'Collecting';
+    document.getElementById('si-status').textContent = '—';
+    document.getElementById('msg-input').disabled = false;
+    document.getElementById('send-btn').disabled  = false;
+    document.getElementById('start-btn').disabled  = false;
+    document.getElementById('start-btn').textContent = 'Start ordering →';
+    document.getElementById('setup-error').textContent = '';
+    document.getElementById('chat-layout').style.display  = 'none';
+    document.getElementById('setup-panel').style.display  = 'flex';
+  }
+</script>
+</body>
+</html>

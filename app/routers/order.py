@@ -29,13 +29,25 @@ def create_order(payload: OrderRequest, db: Session = Depends(get_db)):
     
     if extraction.message_type == "suggestion":
         if not candidates:
-            return OrderResponse(message_type="suggestion", suggestions=[])
+            return OrderResponse(
+                message_type="suggestion",
+                suggestions=[],
+                message="Sorry, I couldn't find anything matching that on the menu.",
+            )
 
         # Step 3 — AI picks up to 10 recommended items from the candidates
         suggestions = ai_service.suggest_items(payload.message, candidates)
+
+        lines = [
+            f"{i}. {s.name} — {s.reason}"
+            for i, s in enumerate(suggestions, start=1)
+        ]
+        formatted = "Here are some suggestions for you:\n\n" + "\n".join(lines)
+
         return OrderResponse(
             message_type="suggestion",
             suggestions=[SuggestedItem(id=s.id, name=s.name, reason=s.reason) for s in suggestions],
+            message=formatted,
         )
 
     # message_type == "order"
